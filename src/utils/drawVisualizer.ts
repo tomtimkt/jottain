@@ -797,6 +797,597 @@ export function drawPlasma(
 
 // ─── Vinyl Record ─────────────────────────────────────────────────────────────
 
+// ─── Voronoi Cells ───────────────────────────────────────────────────────────
+
+interface VoronoiSite {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  color: string;
+}
+
+let voronoiSites: VoronoiSite[] = [];
+
+export function resetVoronoi() {
+  voronoiSites = [];
+}
+
+export function drawVoronoi(
+  ctx: CanvasRenderingContext2D,
+  dataArray: AnyUint8Array,
+  settings: VisualizerSettings
+) {
+  const { x, y, width, height, colorStart, colorEnd, colorMid, sensitivity, glow, glowColor, glowStrength, voronoiCellCount, voronoiNoiseScale } = settings;
+  const cellCount = voronoiCellCount || 40;
+
+  // Get average energy
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+  const avg = (sum / dataArray.length / 255) * sensitivity;
+
+  // Initialize sites or adjust count
+  if (voronoiSites.length === 0) {
+    for (let i = 0; i < cellCount; i++) {
+      voronoiSites.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 2,
+        vy: (Math.random() - 0.5) * 2,
+        color: Math.random() < 0.5 ? colorStart : colorEnd,
+      });
+    }
+  } else if (voronoiSites.length < cellCount) {
+    // Add more sites to reach cellCount
+    while (voronoiSites.length < cellCount) {
+      voronoiSites.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 2,
+        vy: (Math.random() - 0.5) * 2,
+        color: Math.random() < 0.5 ? colorStart : colorEnd,
+      });
+    }
+  } else if (voronoiSites.length > cellCount) {
+    // Remove excess sites
+    voronoiSites.length = cellCount;
+  }
+
+  if (glow) applyGlow(ctx, glowColor, glowStrength * 0.5);
+
+  // Update sites with audio + noise
+  const noiseScale = voronoiNoiseScale || 3;
+  for (let i = 0; i < voronoiSites.length; i++) {
+    const site = voronoiSites[i];
+    const freqIdx = Math.floor((i / voronoiSites.length) * Math.min(dataArray.length, 64));
+    const audioForce = (dataArray[freqIdx] / 255) * sensitivity * 8;
+    
+    site.vx += (Math.random() - 0.5) * noiseScale * 0.1;
+    site.vy += (Math.random() - 0.5) * noiseScale * 0.1;
+    site.vx += Math.sin(Date.now() * 0.001 + i) * 0.3;
+    site.vy += Math.cos(Date.now() * 0.001 + i) * 0.3;
+    site.vx += (Math.random() - 0.5) * avg * 4;
+    site.vy += (Math.random() - 0.5) * avg * 4;
+    site.vx *= 0.95;
+    site.vy *= 0.95;
+    site.vx += audioForce * (Math.random() - 0.5);
+    site.vy += audioForce * (Math.random() - 0.5);
+    
+    site.x += site.vx;
+    site.y += site.vy;
+    
+    // Wrap around
+    if (site.x < 0) site.x += width;
+    if (site.x > width) site.x -= width;
+    if (site.y < 0) site.y += height;
+    if (site.y > height) site.y -= height;
+    
+    // Update color
+    const t = (i / voronoiSites.length + Date.now() * 0.0001) % 1;
+    site.color = t < 0.5 ? lerpColor(colorStart, colorMid, t * 2) : lerpColor(colorMid, colorEnd, (t - 0.5) * 2);
+  }
+
+  // Draw cells using pixel-based approach for performance
+  const res = 4;
+  const cols = Math.ceil(width / res);
+  const rows = Math.ceil(height / res);
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const px = col * res;
+      const py = row * res;
+      
+      // Find closest two sites
+      let minDist1 = Infinity, minDist2 = Infinity;
+      let closestIdx = 0;
+      
+      for (let i = 0; i < voronoiSites.length; i++) {
+        const d = Math.hypot(px - voronoiSites[i].x, py - voronoiSites[i].y);
+        if (d < minDist1) {
+          minDist2 = minDist1;
+          minDist1 = d;
+          closestIdx = i;
+        } else if (d < minDist2) {
+          minDist2 = d;
+        }
+      }
+      
+      const edgeDist = minDist2 - minDist1;
+      const site = voronoiSites[closestIdx];
+      
+      // Fill with cell color, edges get darker
+      const edgeWidth = 2 + avg * 3;
+      if (edgeDist < edgeWidth) {
+        ctx.fillStyle = site.color + '33';
+      } else {
+        ctx.fillStyle = site.color;
+      }
+      ctx.globalAlpha = 0.3 + avg * 0.5;
+      ctx.fillRect(x + px, y + py, res, res);
+    }
+  }
+  
+  ctx.globalAlpha = 1;
+  clearGlow(ctx);
+}
+
+// ─── Fractal Tree ─────────────────────────────────────────────────────────────
+
+interface Branch {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  depth: number;
+  angle: number;
+}
+
+export function drawFractalTree(
+  ctx: CanvasRenderingContext2D,
+  dataArray: AnyUint8Array,
+  settings: VisualizerSettings
+) {
+  const { x, y, width, height, colorStart, colorEnd, colorMid, sensitivity, glow, glowColor, glowStrength, fractalDepth, fractalBranchAngle, rotationSpeed, bassBoost } = settings;
+  const depth = fractalDepth || 8;
+  const branchAngle = (fractalBranchAngle || 25) * Math.PI / 180;
+  const cx = x + width / 2;
+  const cy = y + height * 0.85;
+  const trunkLen = height * 0.25;
+
+  // Get bass energy
+  let bassSum = 0;
+  const bassRange = Math.min(20, dataArray.length);
+  for (let i = 0; i < bassRange; i++) bassSum += dataArray[i];
+  const bass = (bassSum / bassRange / 255) * sensitivity * (1 + bassBoost * 0.3);
+  
+  // Get overall energy
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+  const avg = (sum / dataArray.length / 255) * sensitivity;
+
+  if (glow) applyGlow(ctx, glowColor, glowStrength * 0.4);
+
+  const branches: Branch[] = [];
+  const rotOffset = (globalRotation * Math.PI / 180) * (rotationSpeed * 0.1);
+
+  function growBranch(x1: number, y1: number, len: number, a: number, d: number) {
+    if (d > depth) return;
+    
+    const x2 = x1 + Math.sin(a) * len;
+    const y2 = y1 - Math.cos(a) * len;
+    
+    branches.push({ x1, y1, x2, y2, depth: d, angle: a });
+    
+    const newLen = len * 0.7;
+    const audioMod = 1 + bass * Math.sin(Date.now() * 0.005 + d) * 0.3;
+    
+    growBranch(x2, y2, newLen * audioMod, a - branchAngle * (0.5 + avg * 0.3), d + 1);
+    growBranch(x2, y2, newLen * audioMod, a + branchAngle * (0.5 + avg * 0.3), d + 1);
+  }
+
+  growBranch(cx, cy, trunkLen * (1 + bass * 0.2), rotOffset, 0);
+
+  for (const branch of branches) {
+    const t = branch.depth / depth;
+    ctx.beginPath();
+    ctx.moveTo(branch.x1, branch.y1);
+    ctx.lineTo(branch.x2, branch.y2);
+    ctx.strokeStyle = t < 0.5 ? lerpColor(colorStart, colorMid, t * 2) : lerpColor(colorMid, colorEnd, (t - 0.5) * 2);
+    ctx.lineWidth = Math.max(1, (depth - branch.depth) * 1.5);
+    ctx.stroke();
+  }
+
+  clearGlow(ctx);
+}
+
+// ─── Kaleidoscope ─────────────────────────────────────────────────────────────
+
+export function drawKaleidoscope(
+  ctx: CanvasRenderingContext2D,
+  dataArray: AnyUint8Array,
+  settings: VisualizerSettings
+) {
+  const { x, y, width, height, colorStart, colorEnd, colorMid, sensitivity, glow, glowColor, glowStrength, kaleidoscopeSegments, scaleMultiplier, rotationSpeed } = settings;
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const segments = kaleidoscopeSegments || 8;
+  const maxR = Math.min(width, height) / 2 * scaleMultiplier;
+  const rot = globalRotation * Math.PI / 180 * (rotationSpeed * 0.2);
+
+  if (glow) applyGlow(ctx, glowColor, glowStrength);
+
+  // Get average energy
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+  const avg = (sum / dataArray.length / 255) * sensitivity;
+
+  const segmentAngle = (Math.PI * 2) / segments;
+
+  for (let s = 0; s < segments; s++) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rot + s * segmentAngle);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+
+    const points = Math.min(dataArray.length, 128);
+    const freqStep = Math.floor(points / 24);
+    const segAngle = segmentAngle * 0.8;
+
+    for (let i = 0; i < 24; i++) {
+      const freqIdx = Math.min(i * freqStep, dataArray.length - 1);
+      const val = dataArray[freqIdx] * sensitivity;
+      const r = (i / 24) * maxR + (val / 255) * maxR * 0.5;
+      const px = Math.cos(segAngle) * r;
+      const py = -Math.sin(segAngle) * r;
+      const t = i / 24;
+      ctx.fillStyle = t < 0.5 ? lerpColor(colorStart, colorMid, t * 2) : lerpColor(colorMid, colorEnd, (t - 0.5) * 2);
+      ctx.globalAlpha = 0.4 + avg * 0.4;
+      ctx.beginPath();
+      ctx.arc(px, py, 3 + (val / 255) * 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  // Draw connecting lines between segments
+  ctx.globalAlpha = 0.3 + avg * 0.5;
+  for (let s = 0; s < segments; s++) {
+    const a1 = rot + s * segmentAngle;
+    const a2 = rot + (s + 1) * segmentAngle;
+    
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a1) * maxR * 0.3, cy + Math.sin(a1) * maxR * 0.3);
+    ctx.lineTo(cx + Math.cos(a2) * maxR * 0.3, cy + Math.sin(a2) * maxR * 0.3);
+    ctx.strokeStyle = colorMid;
+    ctx.lineWidth = 1 + avg * 3;
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 1;
+  clearGlow(ctx);
+}
+
+// ─── Polyhedron (3D shapes) ───────────────────────────────────────────────────
+
+interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+function project3D(v: Vec3, cx: number, cy: number, scale: number): { x: number; y: number; z: number } {
+  const fov = 300;
+  const factor = fov / (fov + v.z + scale * 100);
+  return {
+    x: cx + v.x * factor,
+    y: cy + v.y * factor,
+    z: v.z,
+  };
+}
+
+function rotateX(v: Vec3, angle: number): Vec3 {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return { x: v.x, y: v.y * c - v.z * s, z: v.y * s + v.z * c };
+}
+
+function rotateY(v: Vec3, angle: number): Vec3 {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return { x: v.x * c + v.z * s, y: v.y, z: -v.x * s + v.z * c };
+}
+
+function rotateZ(v: Vec3, angle: number): Vec3 {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return { x: v.x * c - v.y * s, y: v.x * s + v.y * c, z: v.z };
+}
+
+export function drawPolyhedron(
+  ctx: CanvasRenderingContext2D,
+  dataArray: AnyUint8Array,
+  settings: VisualizerSettings
+) {
+  const { x, y, width, height, colorStart, colorEnd, colorMid, sensitivity, glow, glowColor, glowStrength, polyhedronShape, polyhedronSpeed, scaleMultiplier, bassBoost } = settings;
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const baseScale = Math.min(width, height) * 0.25 * scaleMultiplier;
+  const speed = (polyhedronSpeed || 2) * 0.01;
+
+  // Get bass energy
+  let bassSum = 0;
+  const bassRange = Math.min(20, dataArray.length);
+  for (let i = 0; i < bassRange; i++) bassSum += dataArray[i];
+  const bass = (bassSum / bassRange / 255) * sensitivity * (1 + bassBoost * 0.5);
+
+  // Get average energy
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+  const avg = (sum / dataArray.length / 255) * sensitivity;
+
+  if (glow) applyGlow(ctx, glowColor, glowStrength);
+
+  const shape = polyhedronShape || 'cube';
+  let vertices: Vec3[];
+  let edges: [number, number][];
+
+  // Define polyhedra
+  if (shape === 'cube') {
+    const s = baseScale * (1 + bass * 0.2);
+    vertices = [
+      { x: -s, y: -s, z: -s }, { x: s, y: -s, z: -s },
+      { x: s, y: s, z: -s }, { x: -s, y: s, z: -s },
+      { x: -s, y: -s, z: s }, { x: s, y: -s, z: s },
+      { x: s, y: s, z: s }, { x: -s, y: s, z: s },
+    ];
+    edges = [
+      [0,1],[1,2],[2,3],[3,0],
+      [4,5],[5,6],[6,7],[7,4],
+      [0,4],[1,5],[2,6],[3,7],
+    ];
+  } else if (shape === 'octahedron') {
+    const s = baseScale * (1 + bass * 0.3);
+    vertices = [
+      { x: 0, y: -s, z: 0 }, { x: s, y: 0, z: 0 },
+      { x: 0, y: 0, z: s }, { x: -s, y: 0, z: 0 },
+      { x: 0, y: s, z: 0 }, { x: 0, y: 0, z: -s },
+    ];
+    edges = [
+      [0,1],[0,2],[0,3],[0,5],
+      [4,1],[4,2],[4,3],[4,5],
+      [1,2],[2,3],[3,1],
+    ];
+  } else if (shape === 'icosahedron') {
+    const s = baseScale * (1 + bass * 0.25);
+    const phi = 1.618;
+    vertices = [
+      { x: -s, y: s*phi, z: 0 }, { x: s, y: s*phi, z: 0 },
+      { x: -s, y: -s*phi, z: 0 }, { x: s, y: -s*phi, z: 0 },
+      { x: 0, y: -s, z: s*phi }, { x: 0, y: s, z: s*phi },
+      { x: 0, y: -s, z: -s*phi }, { x: 0, y: s, z: -s*phi },
+      { x: s*phi, y: 0, z: -s }, { x: s*phi, y: 0, z: s },
+      { x: -s*phi, y: 0, z: -s }, { x: -s*phi, y: 0, z: s },
+    ];
+    edges = [
+      [0,1],[0,5],[0,7],[0,10],[0,11],
+      [1,5],[1,7],[1,8],[1,9],
+      [2,3],[2,4],[2,6],[2,10],[2,11],
+      [3,4],[3,6],[3,8],[3,9],
+      [4,5],[4,9],[4,11],
+      [6,7],[6,8],[6,10],
+      [7,8],[7,9],[10,11],
+    ];
+  } else {
+    // dodecahedron
+    const s = baseScale * (1 + bass * 0.22);
+    const phi = 1.618;
+    vertices = [
+      { x: s, y: s, z: s }, { x: s, y: s, z: -s },
+      { x: s, y: -s, z: s }, { x: s, y: -s, z: -s },
+      { x: -s, y: s, z: s }, { x: -s, y: s, z: -s },
+      { x: -s, y: -s, z: s }, { x: -s, y: -s, z: -s },
+      { x: 0, y: s/phi, z: s*phi }, { x: 0, y: s/phi, z: -s*phi },
+      { x: 0, y: -s/phi, z: s*phi }, { x: 0, y: -s/phi, z: -s*phi },
+      { x: s/phi, y: s, z: 0 }, { x: s/phi, y: -s, z: 0 },
+      { x: -s/phi, y: s, z: 0 }, { x: -s/phi, y: -s, z: 0 },
+      { x: s/phi, y: 0, z: s }, { x: s/phi, y: 0, z: -s },
+      { x: -s/phi, y: 0, z: s }, { x: -s/phi, y: 0, z: -s },
+    ];
+    edges = [
+      [0,2],[0,4],[0,12],[0,16],
+      [1,3],[1,5],[1,13],[1,17],
+      [2,6],[2,10],[2,14],
+      [3,7],[3,11],[3,15],
+      [4,8],[4,14],[4,18],
+      [5,9],[5,13],[5,19],
+      [6,10],[6,16],[6,18],
+      [7,11],[7,17],[7,19],
+      [8,10],[8,18],[9,11],[9,19],
+      [12,16],[12,17],[13,16],[13,17],
+      [14,18],[15,19],
+    ];
+  }
+
+  const rotX = globalRotation * speed;
+  const rotY = globalRotation * speed * 0.7 + bass * 0.3;
+  const rotZ = globalRotation * speed * 0.3;
+
+  // Transform and project vertices
+  const projected = vertices.map(v => {
+    let rotated = rotateY(rotateX(rotateZ(v, rotZ), rotX), rotY);
+    return project3D(rotated, cx, cy, baseScale);
+  });
+
+  // Draw edges with audio-reactive thickness
+  for (const [i, j] of edges) {
+    const v1 = projected[i];
+    const v2 = projected[j];
+    
+    ctx.beginPath();
+    ctx.moveTo(v1.x, v1.y);
+    ctx.lineTo(v2.x, v2.y);
+    
+    const dist = Math.hypot(v2.x - v1.x, v2.y - v1.y);
+    const freqIdx = Math.floor((dist / (baseScale * 2)) * Math.min(dataArray.length, 32));
+    const val = dataArray[freqIdx] ? (dataArray[freqIdx] / 255) * sensitivity : 0;
+    
+    const t = Math.min(1, Math.max(0, (v1.z + v2.z) / 2 / (baseScale * 2) + 0.5));
+    ctx.strokeStyle = t < 0.5 ? lerpColor(colorStart, colorMid, t * 2) : lerpColor(colorMid, colorEnd, (t - 0.5) * 2);
+    ctx.lineWidth = 1 + val * 4 + bass * 2;
+    ctx.stroke();
+  }
+
+  // Draw vertices as glowing dots
+  ctx.globalAlpha = 0.6 + avg * 0.4;
+  for (const v of projected) {
+    ctx.beginPath();
+    ctx.arc(v.x, v.y, 3 + bass * 5, 0, Math.PI * 2);
+    ctx.fillStyle = colorMid;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  clearGlow(ctx);
+}
+
+// ─── Sierpinski Triangle ──────────────────────────────────────────────────────
+
+function drawSierpinskiTriangle(
+  ctx: CanvasRenderingContext2D,
+  x1: number, y1: number,
+  x2: number, y2: number,
+  x3: number, y3: number,
+  depth: number,
+  color: string,
+  alpha: number
+) {
+  if (depth === 0) {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x3, y3);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.fill();
+    return;
+  }
+
+  const mid1x = (x1 + x2) / 2;
+  const mid1y = (y1 + y2) / 2;
+  const mid2x = (x2 + x3) / 2;
+  const mid2y = (y2 + y3) / 2;
+  const mid3x = (x3 + x1) / 2;
+  const mid3y = (y3 + y1) / 2;
+
+  drawSierpinskiTriangle(ctx, x1, y1, mid1x, mid1y, mid3x, mid3y, depth - 1, color, alpha);
+  drawSierpinskiTriangle(ctx, mid1x, mid1y, x2, y2, mid2x, mid2y, depth - 1, color, alpha * 0.8);
+  drawSierpinskiTriangle(ctx, mid3x, mid3y, mid2x, mid2y, x3, y3, depth - 1, color, alpha * 0.6);
+}
+
+export function drawSierpinski(
+  ctx: CanvasRenderingContext2D,
+  dataArray: AnyUint8Array,
+  settings: VisualizerSettings
+) {
+  const { x, y, width, height, colorStart, colorEnd, colorMid, sensitivity, glow, glowColor, glowStrength, sierpinskiDepth, sierpinskiBassResponse, rotationSpeed } = settings;
+  const depth = sierpinskiDepth || 6;
+  const bassResponse = sierpinskiBassResponse || 1;
+
+  // Get bass energy for pulsing
+  let bassSum = 0;
+  const bassRange = Math.min(30, dataArray.length);
+  for (let i = 0; i < bassRange; i++) bassSum += dataArray[i];
+  const bass = (bassSum / bassRange / 255) * sensitivity;
+
+  // Get average energy
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+  const avg = (sum / dataArray.length / 255) * sensitivity;
+
+  if (glow) applyGlow(ctx, glowColor, glowStrength * (0.5 + bass * 0.5));
+
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const baseSize = Math.min(width, height) * 0.4 * (1 + bass * bassResponse * 0.3);
+  const rot = (globalRotation * Math.PI / 180) * (rotationSpeed * 0.15);
+
+  // Equilateral triangle vertices
+  const h = baseSize * Math.sqrt(3) / 2;
+  const x1 = cx;
+  const y1 = cy - h * 0.6;
+  const x2 = cx - baseSize / 2;
+  const y2 = cy + h * 0.4;
+  const x3 = cx + baseSize / 2;
+  const y3 = cy + h * 0.4;
+
+  // Rotate entire triangle
+  const cosR = Math.cos(rot);
+  const sinR = Math.sin(rot);
+  
+  function rotatePoint(px: number, py: number): [number, number] {
+    const dx = px - cx;
+    const dy = py - cy;
+    return [cx + dx * cosR - dy * sinR, cy + dx * sinR + dy * cosR];
+  }
+
+  const [rx1, ry1] = rotatePoint(x1, y1);
+  const [rx2, ry2] = rotatePoint(x2, y2);
+  const [rx3, ry3] = rotatePoint(x3, y3);
+
+  // Draw inverted triangle in center (hole)
+  const mid1x = (rx1 + rx2) / 2;
+  const mid1y = (ry1 + ry2) / 2;
+  const mid2x = (rx2 + rx3) / 2;
+  const mid2y = (ry2 + ry3) / 2;
+  const mid3x = (rx3 + rx1) / 2;
+  const mid3y = (ry3 + ry1) / 2;
+
+  // Dynamic depth based on audio
+  const dynamicDepth = Math.min(8, depth + Math.floor(bass * 2));
+
+  // Draw outer filled triangles
+  const alpha = 0.5 + avg * 0.4;
+  
+  // Three outer regions with gradient colors
+  const grad1 = lerpColor(colorStart, colorMid, 0.3);
+  const grad2 = lerpColor(colorMid, colorEnd, 0.5);
+  const grad3 = lerpColor(colorEnd, colorStart, 0.7);
+
+  ctx.globalAlpha = alpha;
+  drawSierpinskiTriangle(ctx, rx1, ry1, mid1x, mid1y, mid3x, mid3y, dynamicDepth, grad1, alpha);
+  drawSierpinskiTriangle(ctx, mid1x, mid1y, rx2, ry2, mid2x, mid2y, dynamicDepth, grad2, alpha * 0.7);
+  drawSierpinskiTriangle(ctx, mid3x, mid3y, mid2x, mid2y, rx3, ry3, dynamicDepth, grad3, alpha * 0.5);
+
+  // Draw center hole (inverted triangle)
+  ctx.globalAlpha = 0.15;
+  ctx.beginPath();
+  ctx.moveTo(mid1x, mid1y);
+  ctx.lineTo(mid2x, mid2y);
+  ctx.lineTo(mid3x, mid3y);
+  ctx.closePath();
+  ctx.fillStyle = settings.backgroundColor;
+  ctx.fill();
+
+  // Pulsing center glow
+  if (bass > 0.3) {
+    ctx.globalAlpha = bass * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(mid1x, mid1y);
+    ctx.lineTo(mid2x, mid2y);
+    ctx.lineTo(mid3x, mid3y);
+    ctx.closePath();
+    ctx.strokeStyle = colorMid;
+    ctx.lineWidth = 2 + bass * 5;
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 1;
+  clearGlow(ctx);
+}
+
 export function drawVinyl(
   ctx: CanvasRenderingContext2D,
   dataArray: AnyUint8Array,

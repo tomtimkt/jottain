@@ -16,10 +16,16 @@ import {
   drawLissajous,
   drawPlasma,
   drawVinyl,
+  drawVoronoi,
+  drawFractalTree,
+  drawKaleidoscope,
+  drawPolyhedron,
+  drawSierpinski,
   resetParticles,
   resetRotation,
   resetStarfield,
   resetMatrix,
+  resetVoronoi,
   incrementRotation,
 } from '../utils/drawVisualizer';
 
@@ -168,6 +174,21 @@ const VisualizerCanvas = forwardRef<VisualizerCanvasRef, Props>(
         case 'vinyl':
           drawVinyl(ctx, data, settings, vinylLabelObj);
           break;
+        case 'voronoi':
+          drawVoronoi(ctx, data, settings);
+          break;
+        case 'fractalTree':
+          drawFractalTree(ctx, data, settings);
+          break;
+        case 'kaleidoscope':
+          drawKaleidoscope(ctx, data, settings);
+          break;
+        case 'polyhedron':
+          drawPolyhedron(ctx, data, settings);
+          break;
+        case 'sierpinski':
+          drawSierpinski(ctx, data, settings);
+          break;
         default:
           drawBars(ctx, data, settings);
       }
@@ -208,6 +229,11 @@ const VisualizerCanvas = forwardRef<VisualizerCanvasRef, Props>(
           case 'lissajous': drawLissajous(ctx, data, layerSettings); break;
           case 'plasma': drawPlasma(ctx, data, layerSettings); break;
           case 'vinyl': drawVinyl(ctx, data, layerSettings, vinylLabelObj); break;
+          case 'voronoi': drawVoronoi(ctx, data, layerSettings); break;
+          case 'fractalTree': drawFractalTree(ctx, data, layerSettings); break;
+          case 'kaleidoscope': drawKaleidoscope(ctx, data, layerSettings); break;
+          case 'polyhedron': drawPolyhedron(ctx, data, layerSettings); break;
+          case 'sierpinski': drawSierpinski(ctx, data, layerSettings); break;
         }
         ctx.restore();
       }
@@ -221,12 +247,13 @@ const VisualizerCanvas = forwardRef<VisualizerCanvasRef, Props>(
       }
     }, [analyser]);
 
-    useEffect(() => {
-      resetParticles();
-      resetRotation();
-      resetStarfield();
-      resetMatrix();
-    }, [settings.mode]);
+  useEffect(() => {
+    resetParticles();
+    resetRotation();
+    resetStarfield();
+    resetMatrix();
+    resetVoronoi();
+  }, [settings.mode]);
 
     useEffect(() => {
       cancelAnimationFrame(rafRef.current);

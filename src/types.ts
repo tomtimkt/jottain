@@ -1,8 +1,9 @@
-export type VisualizationMode = 'bars' | 'wave' | 'circle' | 'particles' | 'spiral' | 'rings' | 'tunnel' | 'flower' | 'starfield' | 'dna' | 'aurora' | 'matrix' | 'lissajous' | 'plasma' | 'vinyl';
+export type VisualizationMode = 'bars' | 'wave' | 'circle' | 'particles' | 'spiral' | 'rings' | 'tunnel' | 'flower' | 'starfield' | 'dna' | 'aurora' | 'matrix' | 'lissajous' | 'plasma' | 'vinyl' | 'voronoi' | 'fractalTree' | 'kaleidoscope' | 'polyhedron' | 'sierpinski';
 
 export type BarStyle = 'filled' | 'outline' | 'rounded';
 export type WaveStyle = 'line' | 'filled' | 'dots';
 export type ParticleShape = 'circle' | 'square' | 'star';
+export type PolyhedronShape = 'cube' | 'octahedron' | 'icosahedron' | 'dodecahedron';
 
 export interface VisualizerSettings {
   mode: VisualizationMode;
@@ -43,6 +44,15 @@ export interface VisualizerSettings {
   dnaStrands: number;
   matrixDropSpeed: number;
   plasmaComplexity: number;
+  voronoiCellCount: number;
+  voronoiNoiseScale: number;
+  fractalDepth: number;
+  fractalBranchAngle: number;
+  kaleidoscopeSegments: number;
+  polyhedronShape: PolyhedronShape;
+  polyhedronSpeed: number;
+  sierpinskiDepth: number;
+  sierpinskiBassResponse: number;
   bgImageWidth: number;
   bgImageHeight: number;
   bgImageX: number;

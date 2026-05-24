@@ -28,6 +28,11 @@ const MODES: { id: VisualizationMode; label: string; icon: string }[] = [
   { id: 'lissajous', label: 'Lissajous', icon: '♾️' },
   { id: 'plasma', label: 'Plasma', icon: '🔥' },
   { id: 'vinyl', label: 'Vinyl', icon: '💿' },
+  { id: 'voronoi', label: 'Voronoi', icon: '🔷' },
+  { id: 'fractalTree', label: 'Fractal Tree', icon: '🌲' },
+  { id: 'kaleidoscope', label: 'Kaleidoscope', icon: '🪩' },
+  { id: 'polyhedron', label: 'Polyhedron', icon: '💎' },
+  { id: 'sierpinski', label: 'Sierpinski', icon: '🔺' },
 ];
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -262,6 +267,55 @@ export default function SettingsPanel({ settings, onChange, onBgImageChange, bgI
       {/* Plasma */}
       {settings.mode === 'plasma' && (
         <Slider label="Plasma Complexity" min={2} max={20} step={1} value={settings.plasmaComplexity} onChange={v => onChange({ plasmaComplexity: Math.round(v) })} />
+      )}
+
+      {/* Voronoi */}
+      {settings.mode === 'voronoi' && (
+        <>
+          <Slider label="Cell Count" min={10} max={100} step={1} value={settings.voronoiCellCount || 40} onChange={v => onChange({ voronoiCellCount: Math.round(v) })} />
+          <Slider label="Noise Scale" min={1} max={10} step={0.5} value={settings.voronoiNoiseScale || 3} onChange={v => onChange({ voronoiNoiseScale: v })} />
+        </>
+      )}
+
+      {/* Fractal Tree */}
+      {settings.mode === 'fractalTree' && (
+        <>
+          <Slider label="Tree Depth" min={3} max={12} step={1} value={settings.fractalDepth || 8} onChange={v => onChange({ fractalDepth: Math.round(v) })} />
+          <Slider label="Branch Angle" min={10} max={45} step={1} value={settings.fractalBranchAngle || 25} onChange={v => onChange({ fractalBranchAngle: Math.round(v) })} />
+          <Slider label="Rotation Speed" min={0} max={12} step={0.1} value={settings.rotationSpeed} onChange={v => onChange({ rotationSpeed: v })} />
+        </>
+      )}
+
+      {/* Kaleidoscope */}
+      {settings.mode === 'kaleidoscope' && (
+        <>
+          <Slider label="Segments" min={4} max={24} step={1} value={settings.kaleidoscopeSegments || 8} onChange={v => onChange({ kaleidoscopeSegments: Math.round(v) })} />
+          <Slider label="Scale Multiplier" min={0.5} max={2.5} step={0.05} value={settings.scaleMultiplier} onChange={v => onChange({ scaleMultiplier: v })} />
+          <Slider label="Rotation Speed" min={0} max={12} step={0.1} value={settings.rotationSpeed} onChange={v => onChange({ rotationSpeed: v })} />
+        </>
+      )}
+
+      {/* Polyhedron */}
+      {settings.mode === 'polyhedron' && (
+        <>
+          <Select<typeof settings.polyhedronShape> label="Shape" value={settings.polyhedronShape || 'cube'} onChange={v => onChange({ polyhedronShape: v })} options={[
+            { value: 'cube', label: 'Cube' },
+            { value: 'octahedron', label: 'Octahedron' },
+            { value: 'icosahedron', label: 'Icosahedron' },
+            { value: 'dodecahedron', label: 'Dodecahedron' },
+          ]} />
+          <Slider label="Rotation Speed" min={0.5} max={10} step={0.1} value={settings.polyhedronSpeed || 2} onChange={v => onChange({ polyhedronSpeed: v })} />
+          <Slider label="Scale Multiplier" min={0.5} max={2.5} step={0.05} value={settings.scaleMultiplier} onChange={v => onChange({ scaleMultiplier: v })} />
+        </>
+      )}
+
+      {/* Sierpinski */}
+      {settings.mode === 'sierpinski' && (
+        <>
+          <Slider label="Recursion Depth" min={3} max={8} step={1} value={settings.sierpinskiDepth || 6} onChange={v => onChange({ sierpinskiDepth: Math.round(v) })} />
+          <Slider label="Bass Response" min={0} max={3} step={0.1} value={settings.sierpinskiBassResponse || 1} onChange={v => onChange({ sierpinskiBassResponse: v })} />
+          <Slider label="Rotation Speed" min={0} max={12} step={0.1} value={settings.rotationSpeed} onChange={v => onChange({ rotationSpeed: v })} />
+        </>
       )}
 
       {/* Vinyl */}
